@@ -1,63 +1,85 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
-import numpy as np
-from sentiment import analyze_sentiment
-import random
+from newspaper import Article
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import torch
+import torch.nn.functional as F
+import datetime
+import requests
+from bs4 import BeautifulSoup
 
-st.set_page_config(page_title="Sentiment Tracker", page_icon="📈")
-st.title("📈 Daily Sentiment Tracker")
-st.write("Analyze the emotional trend of a topic over time.")
+# Setup model + tokenizer
+model_name = "cardiffnlp/twitter-roberta-base-sentiment"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSequenceClassification.from_pretrained(model_name)
+labels = ['negative', 'neutral', 'positive']
 
-topic = st.text_input("Enter a topic:", "climate change")
-start_date = st.text_input("Start Date (YYYY/MM/DD)", "2024/01/01")
-end_date = st.text_input("End Date (YYYY/MM/DD)", "2024/01/10")
-articles_per_day = st.slider("Number of headlines per day", 5, 50, 25)
+# Sentiment analyzer
+def analyze_sentiment_batch(texts):
+    encoded = tokenizer(texts, return_tensors='pt', padding=True, truncation=True)
+    with torch.no_grad():
+        output = model(**encoded)
+    scores = F.softmax(output.logits, dim=1).numpy()
+    sentiments = [labels[s.argmax()] for s in scores]
+    sentiment_scores = [float(s[2] - s[0]) for s in scores]  # pos - neg
+    return sentiments, sentiment_scores
 
-def generate_sample_headline(topic):
-    templates = [
-        f"{topic} sparks concern",
-        f"Debate over {topic}",
-        f"{topic} policies in focus",
-        f"New study reveals {topic} impact",
-        f"Protests erupt around {topic}",
-        f"Hope rises with {topic} solutions",
-        f"Mixed public opinion on {topic}",
-        f"{topic} dominates news cycle",
-        f"{topic} trend continues",
-        f"Growing awareness about {topic}"
-    ]
-    return random.choice(templates)
+# Scrape Google News headlines via Bing proxy
+headers = {"User-Agent": "Mozilla/5.0"}
+def fetch_bing_headlines(topic, date):
+    formatted_date = date.strftime('%Y-%m-%d')
+    url = f"https://www.bing.com/news/search?q={topic}+after:{formatted_date}+before:{formatted_date}&FORM=HDRSC6"
+    r = requests.get(url, headers=headers)
+    soup = BeautifulSoup(r.text, 'html.parser')
+    articles = soup.find_all('a', attrs={'class': 'title'})
+    seen = set()
+    headlines_links = []
+    for a in articles:
+        text = a.get_text()
+        link = a['href']
+        if text not in seen:
+            seen.add(text)
+            headlines_links.append((text, link))
+    return headlines_links[:25]
 
-if st.button("🚀 Analyze"):
-    try:
-        start = datetime.strptime(start_date, "%Y/%m/%d")
-        end = datetime.strptime(end_date, "%Y/%m/%d")
-    except:
-        st.error("Invalid date format. Please use YYYY/MM/DD.")
-        st.stop()
+# Streamlit UI
+st.set_page_config(page_title="Smart Roadmap", layout="centered")
+st.title("📊 Smart Roadmap for Social Movements")
+st.markdown("Analyze emotional turning points in news headlines")
 
-    days = (end - start).days + 1
-    results = []
+# Inputs
+topic = st.text_input("Enter a topic (e.g. climate change, AI):", "climate change")
+start = st.date_input("Start Date", datetime.date(2024, 1, 1))
+end = st.date_input("End Date", datetime.date(2024, 1, 5))
+if st.button("Analyze"):
+    with st.spinner("Scraping and analyzing..."):
+        current = start
+        all_data = []
+        all_headlines = []
+        while current <= end:
+            headlines_links = fetch_bing_headlines(topic, current)
+            if headlines_links:
+                headlines = [t[0] for t in headlines_links]
+                links = [t[1] for t in headlines_links]
+                sentiments, scores = analyze_sentiment_batch(headlines)
+                avg_score = sum(scores) / len(scores)
+                all_data.append({"date": current, "avg_score": avg_score})
+                for h, s, l in zip(headlines, sentiments, links):
+                    hyperlink = f"[{h}]({l})"
+                    all_headlines.append({"date": current, "headline": hyperlink, "sentiment": s})
+            current += datetime.timedelta(days=1)
 
-    with st.spinner("Analyzing..."):
-        for i in range(days):
-            date = start + timedelta(days=i)
-            scores = [analyze_sentiment(generate_sample_headline(topic)) for _ in range(articles_per_day)]
-            avg_score = np.mean(scores)
-            results.append((date.date(), avg_score))
+        if not all_data:
+            st.warning("No headlines found.")
+        else:
+            df = pd.DataFrame(all_data)
+            st.line_chart(df.set_index("date"))
+            avg = df['avg_score'].mean()
+            mood = "positive" if avg > 0 else "negative" if avg < 0 else "neutral"
+            st.markdown(f"**Overall Sentiment:** {mood.title()} (avg score = {avg:.3f})")
 
-    df = pd.DataFrame(results, columns=["Date", "Avg Sentiment Score"])
-
-    st.subheader("📊 Sentiment Trend Over Time")
-    plt.figure(figsize=(10, 4))
-    plt.plot(df["Date"], df["Avg Sentiment Score"], marker='o')
-    plt.xlabel("Date")
-    plt.ylabel("Avg Sentiment Score (Pos - Neg)")
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    st.pyplot(plt)
-
-    st.subheader("🗂️ Data")
-    st.dataframe(df)
+            # Show headlines
+            st.markdown("### Headlines and Sentiments")
+            dfh = pd.DataFrame(all_headlines)
+            st.write(dfh.to_markdown(index=False), unsafe_allow_html=True)
