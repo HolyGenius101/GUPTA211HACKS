@@ -3,6 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sentiment import analyze_sentiment
 import datetime
+import feedparser
+
 
 st.title("📊 Smart Roadmap for Social Movements")
 st.write("Analyze emotional turning points in social conversations")
