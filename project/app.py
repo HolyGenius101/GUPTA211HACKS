@@ -1,38 +1,63 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+import numpy as np
 from sentiment import analyze_sentiment
-import datetime
-import feedparser
+import random
 
+st.set_page_config(page_title="Sentiment Tracker", page_icon="📈")
+st.title("📈 Daily Sentiment Tracker")
+st.write("Analyze the emotional trend of a topic over time.")
 
-st.title("📊 Smart Roadmap for Social Movements")
-st.write("Analyze emotional turning points in social conversations")
+topic = st.text_input("Enter a topic:", "climate change")
+start_date = st.text_input("Start Date (YYYY/MM/DD)", "2024/01/01")
+end_date = st.text_input("End Date (YYYY/MM/DD)", "2024/01/10")
+articles_per_day = st.slider("Number of headlines per day", 5, 50, 25)
 
-topic = st.text_input("Enter a social topic (e.g. climate change, AI):", "climate change")
-start_date = st.date_input("Start Date", datetime.date(2024, 1, 1))
-end_date = st.date_input("End Date", datetime.date(2025, 4, 1))
-num_items = st.slider("Number of sample headlines to analyze", 10, 100, 30)
+def generate_sample_headline(topic):
+    templates = [
+        f"{topic} sparks concern",
+        f"Debate over {topic}",
+        f"{topic} policies in focus",
+        f"New study reveals {topic} impact",
+        f"Protests erupt around {topic}",
+        f"Hope rises with {topic} solutions",
+        f"Mixed public opinion on {topic}",
+        f"{topic} dominates news cycle",
+        f"{topic} trend continues",
+        f"Growing awareness about {topic}"
+    ]
+    return random.choice(templates)
 
-if st.button("🚀 Analyze Now"):
-    st.info("Using sample data to simulate results...")
+if st.button("🚀 Analyze"):
+    try:
+        start = datetime.strptime(start_date, "%Y/%m/%d")
+        end = datetime.strptime(end_date, "%Y/%m/%d")
+    except:
+        st.error("Invalid date format. Please use YYYY/MM/DD.")
+        st.stop()
 
-    headlines = [f"{topic} headline {i}" for i in range(num_items)]
-    sentiments, scores = [], []
+    days = (end - start).days + 1
+    results = []
 
-    for text in headlines:
-        sent, score = analyze_sentiment(text)
-        sentiments.append(sent)
-        scores.append(score)
+    with st.spinner("Analyzing..."):
+        for i in range(days):
+            date = start + timedelta(days=i)
+            scores = [analyze_sentiment(generate_sample_headline(topic)) for _ in range(articles_per_day)]
+            avg_score = np.mean(scores)
+            results.append((date.date(), avg_score))
 
-    df = pd.DataFrame({
-        "Headline": headlines,
-        "Sentiment": sentiments,
-        "Score": scores
-    })
+    df = pd.DataFrame(results, columns=["Date", "Avg Sentiment Score"])
 
-    st.subheader("📈 Sentiment Trend")
-    st.line_chart(df["Score"])
+    st.subheader("📊 Sentiment Trend Over Time")
+    plt.figure(figsize=(10, 4))
+    plt.plot(df["Date"], df["Avg Sentiment Score"], marker='o')
+    plt.xlabel("Date")
+    plt.ylabel("Avg Sentiment Score (Pos - Neg)")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    st.pyplot(plt)
 
-    st.subheader("🗞️ Headlines and Sentiment")
+    st.subheader("🗂️ Data")
     st.dataframe(df)
