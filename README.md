@@ -1,14 +1,11 @@
 # Smart Roadmap for Social Movements
 
-This Streamlit app analyzes public sentiment on Twitter for a given social issue and visualizes emotional turning points.
+This app uses Reddit data from Pushshift.io to visualize public sentiment over time on social issues like climate change, AI, and education.
 
-## 💻 How to Run
+## 🔧 How to Run
 
-1. Open Terminal:
-   cd ~/Desktop/GUPTA211HACKS
+1. Install requirements:
+   pip install -r requirements.txt
 
-2. Install requirements:
-   pip3 install -r requirements.txt
-
-3. Launch the app:
+2. Run the app:
    streamlit run app.py
