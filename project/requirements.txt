@@ -1,5 +1,5 @@
 streamlit
-GoogleNews
-vaderSentiment
 pandas
 matplotlib
+torch
+transformers

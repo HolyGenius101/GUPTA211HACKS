@@ -1,45 +1,50 @@
-import snscrape.modules.twitter as sntwitter
-import pandas as pd
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-import matplotlib.pyplot as plt
 import streamlit as st
-import datetime
+from googlenews import GoogleNews
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime
 
-st.set_page_config(page_title="Smart Roadmap for Social Movements", layout="centered")
-st.title("📊 Smart Roadmap for Social Movements")
-st.subheader("Analyze emotional turning points in social conversations")
+def fetch_news(topic, start, end, num_articles):
+    gnews = GoogleNews(lang='en')
+    gnews.set_time_range(start, end)
+    gnews.search(topic)
+    results = gnews.results(sort=True)[:num_articles]
+    return results
 
+def analyze_sentiment(text):
+    analyzer = SentimentIntensityAnalyzer()
+    score = analyzer.polarity_scores(text)['compound']
+    if score >= 0.05:
+        return 'Positive'
+    elif score <= -0.05:
+        return 'Negative'
+    else:
+        return 'Neutral'
+
+def display_results(df):
+    st.subheader("📊 Sentiment Breakdown")
+    counts = df['Sentiment'].value_counts()
+    st.bar_chart(counts)
+
+    st.subheader("📰 Headlines and Sentiment")
+    for i, row in df.iterrows():
+        st.write(f"• {row['Title']} ({row['Sentiment']})")
+
+# Streamlit UI
+st.title("🧠 Analyze emotional turning points in social conversations")
 topic = st.text_input("Enter a social topic (e.g. climate change, AI):", "climate change")
-start_date = st.date_input("Start Date", datetime.date(2024, 1, 1))
-end_date = st.date_input("End Date", datetime.date(2025, 4, 1))
-tweet_limit = st.slider("Number of tweets to analyze", 50, 500, 100, 50)
+start_date = st.date_input("Start Date", datetime(2024, 1, 1))
+end_date = st.date_input("End Date", datetime(2025, 4, 1))
+num_articles = st.slider("Number of Google News articles to analyze", 10, 100, 30)
 
 if st.button("🚀 Analyze Now"):
-    query = f"{topic} since:{start_date} until:{end_date}"
-    tweets = []
-    for i, tweet in enumerate(sntwitter.TwitterSearchScraper(query).get_items()):
-        if i >= tweet_limit:
-            break
-        tweets.append([tweet.date, tweet.content])
-
-    df = pd.DataFrame(tweets, columns=['date', 'text'])
-
-    if df.empty:
-        st.warning("No tweets found. Try a different topic or date range.")
-    else:
-        analyzer = SentimentIntensityAnalyzer()
-        df['sentiment'] = df['text'].apply(lambda x: analyzer.polarity_scores(x)['compound'])
-        df['date'] = pd.to_datetime(df['date'])
-        df.set_index('date', inplace=True)
-
-        weekly = df['sentiment'].resample('W').mean()
-        st.markdown("### 📈 Sentiment Timeline")
-        st.line_chart(weekly)
-
-        shifts = weekly.diff().abs().sort_values(ascending=False).head(3)
-        st.markdown("### 🔀 Top Emotional Turning Points")
-        for date, change in shifts.items():
-            st.write(f"**{date.date()}** — Change: `{change:.3f}` sentiment units")
-
-        st.markdown("### 🗣️ Sample Tweets")
-        st.dataframe(df[['text', 'sentiment']].sample(5))
+    with st.spinner("Scraping news and analyzing sentiment..."):
+        articles = fetch_news(topic, start_date.strftime("%m/%d/%Y"), end_date.strftime("%m/%d/%Y"), num_articles)
+        if not articles:
+            st.warning("No articles found. Try a different topic or date range.")
+        else:
+            df = pd.DataFrame(articles)
+            df['Sentiment'] = df['title'].apply(analyze_sentiment)
+            df = df.rename(columns={'title': 'Title'})
+            display_results(df)
