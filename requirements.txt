@@ -1,5 +1,7 @@
 streamlit
 snscrape
+transformers
+torch
+scipy
 pandas
 matplotlib
-vaderSentiment
